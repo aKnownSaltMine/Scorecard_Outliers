@@ -94,13 +94,6 @@ def main():
     shrink_query_path = os.path.join(queries_folder, shrink_query_file)
     hours_query_path = os.path.join(queries_folder, hours_query_file)
 
-
-
-    # declaring paths to local assets
-    src_folder = os.path.join(cwd, 'src')
-    logo = os.path.join(src_folder, 'logo.png')
-    vid_repair = os.path.join(src_folder, 'Leader_Logo.png')
-
     downloads_path = os.path.join(Path.home(), 'Downloads')
 
 
@@ -153,7 +146,7 @@ def main():
 
     # retreiving roster from ehh roster
     print('Retrieving Roster')
-    roster_df = pd.read_sql(roster_path, conn)
+    roster_df = pd.read_sql(roster_query, conn)
     print('Roster Dataframe Created')
     print('-'*25)
 
@@ -304,13 +297,15 @@ def main():
                 'Green': 3,
                 'Yellow': 2,
                 'Red': 1}
+    """
+    the below nested for loop iterates through each possible instance based on fiscal month,
+    title, and metric in order to find those who match the qualifications and assign the color
+    earned by their performance
+    """
 
     for month in fiscal_mths:
-        print(month)
         for title in title_list:
-            print(title)
             for metric in metric_list:
-                print(metric)
                 # grab the thresholds for each possibility of loop from the threshold_df 
                 green = threshold_df.loc[(threshold_df['JobCodeDesc'] == title) & (threshold_df['Metric'] == metric) & (
                     threshold_df['StartDate'] <= month) & (threshold_df['StopDate'] >= month), 'Green'].values[0]  # type: ignore
@@ -323,37 +318,48 @@ def main():
 
                 if metric == 'AHT':
                     if blue != blue:  # checks to see if null
+                        # if the blue is null, then find those that achieved green and mark the column as such
                         scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] <= green) & (
                             scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Green'
                     else:
+                        # if blue isn not null, then find those who match blue achievement and mark the column
                         scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] <= blue) & (
                             scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Blue'
+                        # find those that match for green and mark green
                         scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] <= green) & (
                             scorecard_df[metric] > blue) & (scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Green'
+                    # find those who hit yellow and mark them for yellow
                     scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] <= yellow) & (
                         scorecard_df[metric] > green) & (scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Yellow'
+                    # find those who hit below yellow, and mark them red
                     scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] > yellow) & (
                         scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Red'
 
                 else:
                     if blue != blue:  # checks to see if null
+                        # if the blue is null, then find those that achieved green and mark the column as such
                         scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] >= green) & (
                             scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Green'
                     else:
+                        # find those that match for green and mark green
                         scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] >= blue) & (
                             scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Blue'
+                        # find those that match for green and mark green
                         scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] >= green) & (
                             scorecard_df[metric] < blue) & (scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Green'
+                    # find those who hit yellow and mark them for yellow
                     scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] >= yellow) & (
                         scorecard_df[metric] < green) & (scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Yellow'
+                    # find those who hit below yellow, and mark them red
                     scorecard_df.loc[(scorecard_df['Title'] == title) & (scorecard_df[metric] < yellow) & (
                         scorecard_df['Fiscal Mth'] == month), f'{metric} color'] = 'Red'
-
+                # create score column for the metric
                 for key, value in color_dict.items():
                     scorecard_df.loc[scorecard_df[f'{metric} color']
                                     == key, f'{metric} score'] = value * weight
 
     scorecard_df = scorecard_df.replace([np.inf, -np.inf], 0)
+    # create weighted score column by summing up score columns
     scores_columns = [
         value for value in scorecard_df.columns if value.endswith('score')]  # type: ignore
     scorecard_df['Weighted score'] = scorecard_df.loc[:,
