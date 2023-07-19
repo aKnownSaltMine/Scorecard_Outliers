@@ -64,6 +64,7 @@ saves_as = "Scorecard_Metrics.xlsx"
 cwd = os.path.dirname(__file__)
 # cwd = os.getcwd()
 data_folder = os.path.join(cwd, 'Data')
+queries_folder = os.path.join(cwd, 'Queries')
 
 threshold_file = 'Thresholds.xlsx'
 threshold_path = os.path.join(data_folder, threshold_file)
@@ -84,6 +85,16 @@ save_path = os.path.join(save_folder, save_file)
 server_folder = r'' # Network Share drive
 server_path = os.path.join(server_folder, save_file)
 roster_path = r"" # Network Share drive
+
+roster_query_file = 'VR_Roster_Query.sql'
+shrink_query_file = 'Shrink_Query.sql'
+hours_query_file = 'hours_query.sql'
+
+roster_query_path = os.path.join(queries_folder, roster_query_file)
+shrink_query_path = os.path.join(queries_folder, shrink_query_file)
+hours_query_path = os.path.join(queries_folder, hours_query_file)
+
+
 
 # declaring paths to local assets
 src_folder = os.path.join(cwd, 'src')
@@ -113,62 +124,27 @@ move(download_file, file_save_location)
 print(f'Saved: {file_save_location}')
 print('--------------------')
 
-# query to grab the shrink data from traffic server
-shrink_query = f'''
-Select StdDate AS [Date]
-	  ,EmpID
-	  ,[Unplanned OOO]
-	  ,[Scheduled]
-FROM (SELECT shr.StdDate
-		  ,[EmpID]
-		  ,[ShrinkCategory]
-		  ,Sum([ShrinkSeconds]) as [Shrink (sec)]
-	  FROM [Aspect].[WFM].[BI_Daily_CS_Shrinkage] as shr
-	  INNER JOIN [UXID].[EMP].[Workers] AS ros with(NOLOCK)
-	  ON REPLACE(shr.[EmpID],' ','') = REPLACE(ros.[NETIQWORKERID], ' ', '')
-	  INNER JOIN [UXID].[REF].[Departments] AS dept WITH(NOLOCK)
-	  ON ros.DEPARTMENTID = dept.DEPARTMENTID
-	  WHERE (dept.NAME LIKE '%Video%')
-	  AND (shr.StdDate BETWEEN '{gvp.decide_fm_beginning(shrink_fm - relativedelta(months=2)).strftime("%m/%d/%Y")}' AND '{gvp.decide_fm_end(current_fm).strftime("%m/%d/%Y")}') 
-	  AND (shr.ShrinkCategory IN ('Scheduled', 'Unplanned OOO'))
-	  AND ([ShrinkCode] <> 'STF-MGMT-OVR UNPAID')
-	  GROUP BY shr.StdDate, shr.EmpID, shr.ShrinkCategory) as Shrink_Table
-PIVOT(
-	SUM([Shrink (sec)])
-	FOR [ShrinkCategory] IN ([Unplanned OOO], [Scheduled])
-	) AS piv
-ORDER BY [StdDate] DESC, EmpID ASC;
-'''
-# query to grab the hours staffed from traffic server
-hours_query = f''' 
-Select StdDate AS [Date]
-	  ,EmpID
-	  ,[Out of Center - Planned]
-	  ,[Out of Center - Unplanned]
-	  ,[Scheduled Hours]
-FROM (SELECT shr.StdDate
-		  ,[EmpID]
-		  ,[ShrinkType]
-		  ,Sum([ShrinkSeconds]) as [Shrink (sec)]
-	  FROM [Aspect].[WFM].[BI_Daily_CS_Shrinkage] as shr
-	  INNER JOIN [UXID].[EMP].[Workers] AS ros with(NOLOCK)
-	  ON REPLACE(shr.[EmpID],' ','') = REPLACE(ros.[NETIQWORKERID], ' ', '')
-	  INNER JOIN [UXID].[REF].[Departments] AS dept WITH(NOLOCK)
-	  ON ros.DEPARTMENTID = dept.DEPARTMENTID
-	  WHERE (dept.NAME LIKE '%Video%')
-	  AND (shr.StdDate BETWEEN '{gvp.decide_fm_beginning(shrink_fm).strftime("%m/%d/%Y")}' AND '{gvp.decide_fm_end(current_fm).strftime("%m/%d/%Y")}') 
-	  AND ((shr.ShrinkType LIKE '%Out of Center%') 
-	  OR (shr.ShrinkType Like '%Scheduled%'))
-	  GROUP BY shr.StdDate, shr.EmpID, shr.ShrinkType) as Shrink_Table
-PIVOT(
-	SUM([Shrink (sec)])
-	FOR [ShrinkType] IN ([Out of Center - Planned], [Out of Center - Unplanned], [Scheduled Hours])
-	) AS piv
-ORDER BY [StdDate] DESC, EmpID ASC;
-'''
+# reading in queries to run against network server
+with open(shrink_query_path, 'r') as query:
+    shrink_query = query.read()
+with open(roster_query_path, 'r') as query:
+    roster_query = query.read()
+with open(hours_query_path, 'r') as query:
+    hours_query = query.read()
+
+"""
+Change the date boundaries of sql query using python rather than using variables in sql
+to allow for edits/adhoc runs of the report without having to edit too many fields.
+"""
+shrink_query = shrink_query.replace('<<start>>', gvp.decide_fm_beginning(shrink_fm - relativedelta(months=2)).strftime("%m/%d/%Y"))
+shrink_query = shrink_query.replace('<<end>>', gvp.decide_fm_end(current_fm).strftime("%m/%d/%Y"))
+
+hours_query = hours_query.replace('<<start>>', gvp.decide_fm_beginning(shrink_fm).strftime("%m/%d/%Y"))
+hours_query = hours_query.replace('<<end>>', gvp.decide_fm_end(current_fm).strftime("%m/%d/%Y"))
+
 
 conn_str = ("Driver={SQL Server};"
-            "Server=VM0PWOWMMSD0003;"
+            "Server=;" # Network Server Address
             "Database=Aspect;"
             "Trusted_Connection=yes;")
 conn = pyodbc.connect(conn_str)
@@ -177,7 +153,7 @@ print('Connected to Server')
 
 # retreiving roster from ehh roster
 print('Retrieving Roster')
-roster_df = pd.read_csv(roster_path)
+roster_df = pd.read_sql(roster_path, conn)
 print('Roster Dataframe Created')
 print('-'*25)
 
