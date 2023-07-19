@@ -1,10 +1,11 @@
 Select StdDate AS [Date]
 	  ,EmpID
-	  ,[Unplanned OOO]
-	  ,[Scheduled]
+	  ,[Out of Center - Planned]
+	  ,[Out of Center - Unplanned]
+	  ,[Scheduled Hours]
 FROM (SELECT shr.StdDate
 		  ,[EmpID]
-		  ,[ShrinkCategory]
+		  ,[ShrinkType]
 		  ,Sum([ShrinkSeconds]) as [Shrink (sec)]
 	  FROM [Aspect].[WFM].[BI_Daily_CS_Shrinkage] as shr
 	  INNER JOIN [UXID].[EMP].[Workers] AS ros with(NOLOCK)
@@ -13,11 +14,11 @@ FROM (SELECT shr.StdDate
 	  ON ros.DEPARTMENTID = dept.DEPARTMENTID
 	  WHERE (dept.NAME LIKE '%Video%')
 	  AND (shr.StdDate BETWEEN '<<start>>' AND '<<end>>') 
-	  AND (shr.ShrinkCategory IN ('Scheduled', 'Unplanned OOO'))
-	  AND ([ShrinkCode] <> 'STF-MGMT-OVR UNPAID')
-	  GROUP BY shr.StdDate, shr.EmpID, shr.ShrinkCategory) as Shrink_Table
+	  AND ((shr.ShrinkType LIKE '%Out of Center%') 
+	  OR (shr.ShrinkType Like '%Scheduled%'))
+	  GROUP BY shr.StdDate, shr.EmpID, shr.ShrinkType) as Shrink_Table
 PIVOT(
 	SUM([Shrink (sec)])
-	FOR [ShrinkCategory] IN ([Unplanned OOO], [Scheduled])
+	FOR [ShrinkType] IN ([Out of Center - Planned], [Out of Center - Unplanned], [Scheduled Hours])
 	) AS piv
 ORDER BY [StdDate] DESC, EmpID ASC;
