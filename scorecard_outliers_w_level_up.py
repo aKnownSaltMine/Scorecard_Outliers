@@ -6,7 +6,6 @@ from pathlib import Path
 from shutil import copy, move
 from Dependencies.setup import setup
 from Dependencies import gvp_functions as gvp
-from Scorecard_Outliers.Dependencies import gvp_functions
 
 # import dependencies
 try:
